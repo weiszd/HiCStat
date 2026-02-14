@@ -247,7 +247,7 @@
     .collapsible { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
     .collapsible.open { max-height: 10000px; }
     .chart-container { position: relative; }
-    .chart-container canvas { width: 100%; height: 260px; display: block; border-radius: 6px; }
+    .chart-container canvas { width: 100%; height: 280px; display: block; border-radius: 6px; }
     .chart-legend {
       display: flex; gap: 1rem; flex-wrap: wrap;
       margin-top: 0.6rem; font-size: 0.75rem; color: var(--text2);
@@ -582,7 +582,7 @@ function setupCanvas(canvas) {
 
 function drawLineChart(canvas, opts) {
   const { ctx, w, h } = setupCanvas(canvas);
-  const m = opts.margins || { top: 15, right: 15, bottom: 38, left: 55 };
+  const m = opts.margins || { top: 15, right: 15, bottom: 52, left: 55 };
   const pW = w - m.left - m.right;
   const pH = h - m.top - m.bottom;
 
