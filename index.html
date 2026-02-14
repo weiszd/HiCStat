@@ -274,9 +274,9 @@
     </div>
     <div class="examples">
       Try:
-      <a onclick="setExample('ENCFF080STQ')">ENCFF080STQ</a> ·
       <a onclick="setExample('ENCFF622YUQ')">ENCFF622YUQ</a> ·
-      <a onclick="setExample('https://hicfiles.s3.amazonaws.com/hiseq/gm12878/in-situ/combined.hic')">GM12878 in-situ</a>
+      <a onclick="setExample('ENCFF148QCR')">ENCFF148QCR</a> ·
+      <a onclick="setExample('https://4dn-open-data-public.s3.amazonaws.com/fourfront-webprod/wfoutput/c377953b-0e61-426b-a905-abab2d5a3002/4DNFI9VXTBE2.hic')">4DN GM12878</a>
     </div>
 
     <div id="status"><span class="spinner"></span><span id="statusText">Loading...</span></div>
@@ -413,17 +413,11 @@ async function resolveUrl(input) {
   if (input.startsWith('http://') || input.startsWith('https://')) {
     return { url: input, encodeMetadata: null };
   }
-  // ENCODE accession
-  const accession = input.replace(/^ENCFF/i, '').length === 7 ? input.toUpperCase() : null;
-  if (!accession || !/^ENCFF[A-Z0-9]{6}$/.test(accession)) {
-    // Maybe just the suffix
-    const full = 'ENCFF' + input.toUpperCase();
-    if (/^ENCFF[A-Z0-9]{6}$/.test(full)) {
-      return resolveEncodeAccession(full);
-    }
-    throw new Error(`Invalid input. Provide an ENCODE accession (ENCFF...) or a URL.`);
-  }
-  return resolveEncodeAccession(accession);
+  // ENCODE accession: accept ENCFF..., or just the 6-char suffix
+  const upper = input.toUpperCase();
+  if (/^ENCFF[A-Z0-9]{6}$/.test(upper)) return resolveEncodeAccession(upper);
+  if (/^[A-Z0-9]{6}$/.test(upper)) return resolveEncodeAccession('ENCFF' + upper);
+  throw new Error(`Invalid input. Provide an ENCODE file accession (ENCFF...) or a URL.`);
 }
 
 async function resolveEncodeAccession(accession) {
@@ -431,7 +425,7 @@ async function resolveEncodeAccession(accession) {
   const resp = await fetch(`https://www.encodeproject.org/files/${accession}/?format=json`, {
     headers: { 'Accept': 'application/json' }
   });
-  if (!resp.ok) throw new Error(`ENCODE API returned ${resp.status} for ${accession}`);
+  if (!resp.ok) throw new Error(`ENCODE API returned ${resp.status} for ${accession}. Check the accession is valid.`);
   const meta = await resp.json();
   if (meta.file_format !== 'hic') throw new Error(`${accession} is not a .hic file (format: ${meta.file_format})`);
   const downloadUrl = `https://www.encodeproject.org${meta.href}`;
@@ -442,20 +436,43 @@ async function resolveEncodeAccession(accession) {
 async function fetchHeaderBytes(url, size = 262144) {
   setStatus(`Fetching first ${(size/1024).toFixed(0)} KB of .hic file...`);
 
-  // Follow redirects manually to handle ENCODE -> S3
-  let finalUrl = url;
-  let resp = await fetch(url, {
-    headers: { 'Range': `bytes=0-${size - 1}` },
-    redirect: 'follow'
-  });
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: 'GET',
+      headers: { 'Range': `bytes=0-${size - 1}` },
+      redirect: 'follow',
+      mode: 'cors',
+    });
+  } catch (networkErr) {
+    throw new Error(`Network error fetching .hic file. The server may not support CORS or the URL may be inaccessible. (${networkErr.message})`);
+  }
 
+  if (resp.status === 403) {
+    throw new Error(`Access denied (403). The file may require authentication or the S3 bucket permissions may have changed.`);
+  }
+  if (resp.status === 404) {
+    throw new Error(`File not found (404). Check that the URL is correct.`);
+  }
   if (!resp.ok && resp.status !== 206) {
-    // Try without Range in case server doesn't support it
-    resp = await fetch(url, { redirect: 'follow' });
-    if (!resp.ok) throw new Error(`Failed to fetch .hic file: HTTP ${resp.status}`);
+    throw new Error(`Failed to fetch .hic file: HTTP ${resp.status} ${resp.statusText}`);
   }
 
   const buf = await resp.arrayBuffer();
+
+  // Sanity check: make sure we got binary data, not an HTML redirect page
+  if (buf.byteLength >= 4) {
+    const magic = new Uint8Array(buf, 0, 4);
+    const asStr = String.fromCharCode(magic[0], magic[1], magic[2]);
+    if (asStr !== 'HIC') {
+      // Could be HTML from a redirect that didn't resolve
+      const textSnippet = new TextDecoder().decode(buf.slice(0, 200));
+      if (textSnippet.includes('<!DOCTYPE') || textSnippet.includes('<html')) {
+        throw new Error(`Received an HTML page instead of binary .hic data. The server may have redirected to a login page, or CORS may be blocking the actual file.`);
+      }
+    }
+  }
+
   return buf;
 }
 
