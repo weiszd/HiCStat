@@ -276,6 +276,7 @@
       Try:
       <a onclick="setExample('ENCFF622YUQ')">ENCFF622YUQ</a> ·
       <a onclick="setExample('ENCFF148QCR')">ENCFF148QCR</a> ·
+      <a onclick="setExample('https://hicfiles.s3.amazonaws.com/hiseq/gm12878/in-situ/combined.hic')">GM12878 in-situ (S3)</a> ·
       <a onclick="setExample('https://4dn-open-data-public.s3.amazonaws.com/fourfront-webprod/wfoutput/c377953b-0e61-426b-a905-abab2d5a3002/4DNFI9VXTBE2.hic')">4DN GM12878</a>
     </div>
 
@@ -432,18 +433,39 @@ async function resolveEncodeAccession(accession) {
   return { url: downloadUrl, encodeMetadata: meta };
 }
 
+// ─── S3 Proxy Configuration ──────────────────────────────────────
+const S3_PROXY_URL = 'https://pjrwcsbzsabikiezwter.supabase.co/functions/v1/hic-proxy';
+const PROXIED_S3_HOSTS = [
+  'hicfiles.s3.amazonaws.com',
+  'hicfiles.s3.us-east-1.amazonaws.com',
+];
+
+function needsProxy(url) {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return PROXIED_S3_HOSTS.includes(hostname);
+  } catch { return false; }
+}
+
 // ─── Fetch header bytes ──────────────────────────────────────────
 async function fetchHeaderBytes(url, size = 262144) {
   setStatus(`Fetching first ${(size/1024).toFixed(0)} KB of .hic file...`);
 
   let resp;
   try {
-    resp = await fetch(url, {
-      method: 'GET',
-      headers: { 'Range': `bytes=0-${size - 1}` },
-      redirect: 'follow',
-      mode: 'cors',
-    });
+    if (needsProxy(url)) {
+      // Route through our Edge Function proxy that adds Referer & User-Agent
+      const proxyUrl = `${S3_PROXY_URL}?url=${encodeURIComponent(url)}&start=0&size=${size}`;
+      setStatus(`Fetching via proxy (S3 requires auth headers)...`);
+      resp = await fetch(proxyUrl, { method: 'GET', mode: 'cors' });
+    } else {
+      resp = await fetch(url, {
+        method: 'GET',
+        headers: { 'Range': `bytes=0-${size - 1}` },
+        redirect: 'follow',
+        mode: 'cors',
+      });
+    }
   } catch (networkErr) {
     throw new Error(`Network error fetching .hic file. The server may not support CORS or the URL may be inaccessible. (${networkErr.message})`);
   }
