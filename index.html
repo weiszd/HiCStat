@@ -245,7 +245,16 @@
     }
     .expandable-header .arrow.open { transform: rotate(90deg); }
     .collapsible { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
-    .collapsible.open { max-height: 5000px; }
+    .collapsible.open { max-height: 10000px; }
+    .chart-container { position: relative; }
+    .chart-container canvas { width: 100%; height: 260px; display: block; border-radius: 6px; }
+    .chart-legend {
+      display: flex; gap: 1rem; flex-wrap: wrap;
+      margin-top: 0.6rem; font-size: 0.75rem; color: var(--text2);
+    }
+    .chart-legend-item { display: flex; align-items: center; gap: 0.35rem; }
+    .chart-legend-swatch { width: 14px; height: 3px; border-radius: 1px; }
+    .chart-subtitle { font-size: 0.75rem; color: var(--text2); margin-bottom: 0.75rem; }
     .stats-text-block {
       font-family: var(--mono);
       font-size: 0.8rem;
@@ -524,6 +533,245 @@ function escHtml(s) {
   return d.innerHTML;
 }
 
+function fmtLogLabel(val) {
+  if (val >= 1e9) return (val/1e9).toFixed(0) + 'G';
+  if (val >= 1e6) return (val/1e6).toFixed(0) + 'M';
+  if (val >= 1e3) return (val/1e3).toFixed(0) + 'K';
+  return Math.round(val).toString();
+}
+
+// ─── Graphs Parser & Charts ─────────────────────────────────────
+function parseGraphs(graphsStr) {
+  const extractArray = (name) => {
+    const re = new RegExp(name + '\\s*=\\s*\\[([^\\]]+)\\]', 's');
+    const m = graphsStr.match(re);
+    if (!m) return null;
+    return m[1].trim().split(/\s+/).filter(s => s.length > 0).map(Number);
+  };
+
+  const A = extractArray('A');
+  const rawB = extractArray('B');
+  const rawD = extractArray('D');
+
+  let B = null;
+  if (rawB && rawB.length >= 3 && rawB.length % 3 === 0) {
+    B = [];
+    for (let i = 0; i < rawB.length; i += 3)
+      B.push({ total: rawB[i], intra: rawB[i+1], inter: rawB[i+2] });
+  }
+
+  let D = null;
+  if (rawD && rawD.length >= 4 && rawD.length % 4 === 0) {
+    D = [];
+    for (let i = 0; i < rawD.length; i += 4)
+      D.push({ inner: rawD[i], outer: rawD[i+1], right: rawD[i+2], left: rawD[i+3] });
+  }
+
+  return { A, B, D };
+}
+
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+function drawLineChart(canvas, opts) {
+  const { ctx, w, h } = setupCanvas(canvas);
+  const m = opts.margins || { top: 15, right: 15, bottom: 38, left: 55 };
+  const pW = w - m.left - m.right;
+  const pH = h - m.top - m.bottom;
+
+  // Background
+  ctx.fillStyle = '#0f1117';
+  ctx.fillRect(0, 0, w, h);
+
+  // Compute ranges
+  let xMin = Infinity, xMax = -Infinity, yMax = 0;
+  for (const s of opts.series) {
+    for (const p of s.data) {
+      if (opts.logX && p.x <= 0) continue;
+      if (p.x < xMin) xMin = p.x;
+      if (p.x > xMax) xMax = p.x;
+      if (p.y > yMax) yMax = p.y;
+    }
+  }
+  yMax = Math.max(yMax * 1.1, 1);
+  if (opts.logX) { xMin = Math.log10(Math.max(1, xMin)); xMax = Math.log10(Math.max(10, xMax)); }
+
+  const sx = (x) => {
+    const val = opts.logX ? Math.log10(Math.max(1, x)) : x;
+    return m.left + ((val - xMin) / (xMax - xMin || 1)) * pW;
+  };
+  const sy = (y) => m.top + pH - (Math.max(0, y) / yMax) * pH;
+
+  // Grid
+  ctx.strokeStyle = '#1e2233';
+  ctx.lineWidth = 0.5;
+  const nGY = 5;
+  for (let i = 0; i <= nGY; i++) {
+    const y = m.top + (pH / nGY) * i;
+    ctx.beginPath(); ctx.moveTo(m.left, y); ctx.lineTo(m.left + pW, y); ctx.stroke();
+  }
+
+  // Axes
+  ctx.strokeStyle = '#3e4355';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(m.left, m.top); ctx.lineTo(m.left, m.top + pH);
+  ctx.lineTo(m.left + pW, m.top + pH);
+  ctx.stroke();
+
+  // Y tick labels
+  ctx.fillStyle = '#8b90a0';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i <= nGY; i++) {
+    const val = yMax * (1 - i / nGY);
+    ctx.fillText(fmtLogLabel(val), m.left - 6, m.top + (pH / nGY) * i);
+  }
+
+  // X tick labels
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  if (opts.logX) {
+    const lo = Math.ceil(xMin), hi = Math.floor(xMax);
+    for (let e = lo; e <= hi; e++) {
+      const xPos = m.left + ((e - xMin) / (xMax - xMin || 1)) * pW;
+      ctx.fillText(fmtLogLabel(Math.pow(10, e)), xPos, m.top + pH + 5);
+    }
+  } else {
+    const nGX = 5;
+    for (let i = 0; i <= nGX; i++) {
+      const val = xMin + (xMax - xMin) * (i / nGX);
+      const xPos = m.left + (pW / nGX) * i;
+      ctx.fillText(fmtLogLabel(val), xPos, m.top + pH + 5);
+    }
+  }
+
+  // Axis labels
+  ctx.fillStyle = '#8b90a0';
+  ctx.font = '11px -apple-system, sans-serif';
+  if (opts.xLabel) {
+    ctx.textAlign = 'center';
+    ctx.fillText(opts.xLabel, m.left + pW / 2, h - 2);
+  }
+  if (opts.yLabel) {
+    ctx.save();
+    ctx.translate(11, m.top + pH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.fillText(opts.yLabel, 0, 0);
+    ctx.restore();
+  }
+
+  // Series
+  for (const s of opts.series) {
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let started = false;
+    for (const p of s.data) {
+      if (opts.logX && p.x <= 0) continue;
+      const px = sx(p.x), py = sy(p.y);
+      if (!started) { ctx.moveTo(px, py); started = true; }
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    // Area fill
+    if (opts.series.length === 1 && started) {
+      ctx.lineTo(sx(s.data[s.data.length - 1].x), sy(0));
+      ctx.lineTo(sx(s.data[0].x), sy(0));
+      ctx.closePath();
+      ctx.fillStyle = s.color.replace(')', ',0.12)').replace('rgb', 'rgba');
+      // Simple alpha fill for hex colors
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = s.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+function renderRestrictionChart(canvas, A) {
+  // Bin every 10bp for readability
+  const binSize = 10;
+  const binned = [];
+  for (let i = 0; i < A.length; i += binSize) {
+    let sum = 0;
+    for (let j = i; j < i + binSize && j < A.length; j++) sum += A[j];
+    binned.push({ x: i + binSize / 2, y: sum });
+  }
+  drawLineChart(canvas, {
+    series: [{ data: binned, color: '#6c8cff', label: 'Read count' }],
+    xLabel: 'Distance from restriction site (bp)',
+    yLabel: 'Read count',
+    logX: false,
+  });
+}
+
+function renderMapqChart(canvas, B) {
+  drawLineChart(canvas, {
+    series: [
+      { data: B.map((r, i) => ({ x: i, y: r.total })), color: '#6c8cff', label: 'Total' },
+      { data: B.map((r, i) => ({ x: i, y: r.intra })), color: '#4ade80', label: 'Intra-chromosomal' },
+      { data: B.map((r, i) => ({ x: i, y: r.inter })), color: '#fb923c', label: 'Inter-chromosomal' },
+    ],
+    xLabel: 'MAPQ Score',
+    yLabel: 'Read count',
+    logX: false,
+  });
+}
+
+function renderOrientationChart(canvas, D) {
+  const n = D.length;
+  const logMin = 1, logMax = 10;
+  const step = (logMax - logMin) / Math.max(n - 1, 1);
+  const bins = D.map((_, i) => Math.pow(10, logMin + i * step));
+  drawLineChart(canvas, {
+    series: [
+      { data: D.map((r, i) => ({ x: bins[i], y: r.inner })), color: '#6c8cff', label: 'Inner' },
+      { data: D.map((r, i) => ({ x: bins[i], y: r.outer })), color: '#4ade80', label: 'Outer' },
+      { data: D.map((r, i) => ({ x: bins[i], y: r.right })), color: '#fb923c', label: 'Right' },
+      { data: D.map((r, i) => ({ x: bins[i], y: r.left })),  color: '#f87171', label: 'Left' },
+    ],
+    xLabel: 'Genomic distance (bp)',
+    yLabel: 'Read pair count',
+    logX: true,
+  });
+}
+
+function buildChartCard(canvasId, title, subtitle, legendItems) {
+  let legendHtml = '';
+  if (legendItems) {
+    legendHtml = `<div class="chart-legend">
+      ${legendItems.map(item =>
+        `<div class="chart-legend-item">
+          <div class="chart-legend-swatch" style="background:${item.color}"></div>
+          <span>${item.label}</span>
+        </div>`
+      ).join('')}
+    </div>`;
+  }
+  return `
+  <div class="card">
+    <div class="card-header">${escHtml(title)}</div>
+    <div class="card-body">
+      <div class="chart-subtitle">${escHtml(subtitle)}</div>
+      <div class="chart-container"><canvas id="${canvasId}"></canvas></div>
+      ${legendHtml}
+    </div>
+  </div>`;
+}
+
+let lastGraphsData = null;
+
 // ─── Render ──────────────────────────────────────────────────────
 function renderResults(hdr, encodeMeta, fileUrl) {
   const r = document.getElementById('results');
@@ -695,19 +943,68 @@ function renderResults(hdr, encodeMeta, fileUrl) {
     </div>`;
 
     // Expandable sections for long attributes (statistics, graphs)
+    let pendingGraphs = null;
     for (const k of longKeys) {
       let content = hdr.attributes[k];
-      // Try to pretty-print if JSON-like
+
+      // Special handling: render graphs as charts
+      if (k === 'graphs') {
+        const parsed = parseGraphs(content);
+        if (parsed.A || parsed.B || parsed.D) {
+          pendingGraphs = parsed;
+          if (parsed.A) {
+            html += buildChartCard('chart_restriction',
+              'Restriction Fragment Distance',
+              'Histogram of read distances from nearest restriction enzyme cut site',
+              null);
+          }
+          if (parsed.B) {
+            html += buildChartCard('chart_mapq',
+              'MAPQ Score Distribution',
+              'Distribution of mapping quality scores by interaction type',
+              [
+                { color: '#6c8cff', label: 'Total' },
+                { color: '#4ade80', label: 'Intra-chromosomal' },
+                { color: '#fb923c', label: 'Inter-chromosomal' },
+              ]);
+          }
+          if (parsed.D) {
+            html += buildChartCard('chart_orientation',
+              'Read Pair Orientation vs Distance',
+              'Pair type counts across genomic distance (log scale)',
+              [
+                { color: '#6c8cff', label: 'Inner' },
+                { color: '#4ade80', label: 'Outer' },
+                { color: '#fb923c', label: 'Right' },
+                { color: '#f87171', label: 'Left' },
+              ]);
+          }
+          // Collapsible raw data
+          const rawId = 'graphs_raw';
+          html += `
+          <div class="card">
+            <div class="card-header expandable-header" onclick="toggleSection('${rawId}')">
+              <span>Raw Graph Data</span>
+              <span class="arrow" id="${rawId}_arrow">&#9654;</span>
+            </div>
+            <div class="collapsible" id="${rawId}">
+              <div class="card-body" style="padding:0.75rem">
+                <div class="stats-text-block">${escHtml(content)}</div>
+              </div>
+            </div>
+          </div>`;
+          continue;
+        }
+        // else: fall through to raw text display
+      }
+
+      // Default: raw expandable text (statistics, or unparseable graphs)
       let displayContent = content;
-      if (k === 'statistics' || k === 'graphs') {
+      if (k === 'statistics') {
         try {
-          // The statistics attribute is often a stringified JSON
           const parsed = JSON.parse(content);
           displayContent = JSON.stringify(parsed, null, 2);
-        } catch {
-          // Try to format as key-value pairs
-          displayContent = content;
-        }
+        } catch { displayContent = content; }
       }
       const id = 'attr_' + k.replace(/\W/g, '_');
       const autoOpen = (k === 'statistics');
@@ -728,6 +1025,18 @@ function renderResults(hdr, encodeMeta, fileUrl) {
 
   r.innerHTML = html;
   r.classList.add('visible');
+
+  // Render graph canvases after DOM update
+  if (pendingGraphs) {
+    lastGraphsData = pendingGraphs;
+    requestAnimationFrame(() => renderGraphCanvases(pendingGraphs));
+  }
+}
+
+function renderGraphCanvases(g) {
+  if (g.A) { const c = document.getElementById('chart_restriction'); if (c) renderRestrictionChart(c, g.A); }
+  if (g.B) { const c = document.getElementById('chart_mapq'); if (c) renderMapqChart(c, g.B); }
+  if (g.D) { const c = document.getElementById('chart_orientation'); if (c) renderOrientationChart(c, g.D); }
 }
 
 function toggleSection(id) {
@@ -756,6 +1065,15 @@ function setExample(val) {
   document.getElementById('input').value = val;
   run();
 }
+
+// Redraw charts on resize
+let _resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => {
+    if (lastGraphsData) renderGraphCanvases(lastGraphsData);
+  }, 200);
+});
 
 // ─── Main ────────────────────────────────────────────────────────
 async function run() {
