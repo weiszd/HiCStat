@@ -792,6 +792,22 @@ async function run() {
 document.getElementById('input').addEventListener('keydown', e => {
   if (e.key === 'Enter') run();
 });
+
+// Auto-load from URL path: /HiCStat/ENCFF090JFB or /HiCStat/?q=https://...
+(function autoLoad() {
+  // Check path segment after /HiCStat/
+  const path = window.location.pathname.replace(/\/$/, '');
+  const base = path.substring(path.lastIndexOf('/') + 1);
+  // Check query param ?q=
+  const params = new URLSearchParams(window.location.search);
+  const q = params.get('q');
+
+  const input = q || (base && base.toLowerCase() !== 'hicstat' && base !== 'index.html' && base !== '' ? decodeURIComponent(base) : null);
+  if (input) {
+    document.getElementById('input').value = input;
+    run();
+  }
+})();
 </script>
 </body>
 </html>

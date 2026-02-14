@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script>
+    // Single-page app redirect for GitHub Pages
+    // Converts /HiCStat/ENCFF090JFB to /HiCStat/?q=ENCFF090JFB
+    var path = window.location.pathname;
+    var base = path.substring(path.lastIndexOf('/') + 1);
+    if (base && base !== 'index.html') {
+      window.location.replace(
+        window.location.origin + path.substring(0, path.lastIndexOf('/') + 1) +
+        '?q=' + encodeURIComponent(base) + window.location.hash
+      );
+    } else {
+      window.location.replace(window.location.origin + path.substring(0, path.lastIndexOf('/') + 1));
+    }
+  </script>
+</head>
+<body></body>
+</html>
