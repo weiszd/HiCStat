@@ -576,6 +576,10 @@ function renderResults(hdr, encodeMeta, fileUrl) {
             <div class="stat-label">Date Created</div>
             <div class="stat-value">${encodeMeta.date_created ? new Date(encodeMeta.date_created).toLocaleDateString() : 'N/A'}</div>
           </div>
+          ${encodeMeta.submitted_file_name ? `<div class="stat-item">
+            <div class="stat-label">Original File Name</div>
+            <div class="stat-value">${escHtml(encodeMeta.submitted_file_name)}</div>
+          </div>` : ''}
         </div>
       </div>
     </div>`;
@@ -702,13 +706,14 @@ function renderResults(hdr, encodeMeta, fileUrl) {
         }
       }
       const id = 'attr_' + k.replace(/\W/g, '_');
+      const autoOpen = (k === 'statistics');
       html += `
       <div class="card">
         <div class="card-header expandable-header" onclick="toggleSection('${id}')">
           <span>${escHtml(k)}</span>
-          <span class="arrow" id="${id}_arrow">&#9654;</span>
+          <span class="arrow${autoOpen ? ' open' : ''}" id="${id}_arrow">&#9654;</span>
         </div>
-        <div class="collapsible" id="${id}">
+        <div class="collapsible${autoOpen ? ' open' : ''}" id="${id}">
           <div class="card-body" style="padding:0.75rem">
             <div class="stats-text-block">${escHtml(displayContent)}</div>
           </div>
