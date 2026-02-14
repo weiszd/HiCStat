@@ -576,7 +576,7 @@ function renderResults(hdr, encodeMeta, fileUrl) {
             <div class="stat-label">Date Created</div>
             <div class="stat-value">${encodeMeta.date_created ? new Date(encodeMeta.date_created).toLocaleDateString() : 'N/A'}</div>
           </div>
-          ${encodeMeta.submitted_file_name ? `<div class="stat-item">
+          ${encodeMeta.submitted_file_name ? `<div class="stat-item" style="grid-column:1/-1">
             <div class="stat-label">Original File Name</div>
             <div class="stat-value">${escHtml(encodeMeta.submitted_file_name)}</div>
           </div>` : ''}
