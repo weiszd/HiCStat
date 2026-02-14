@@ -570,7 +570,7 @@ function renderResults(hdr, encodeMeta, fileUrl) {
           </div>
           <div class="stat-item">
             <div class="stat-label">Assay</div>
-            <div class="stat-value">${escHtml((encodeMeta.assay_term_name || []).join(', ') || 'N/A')}</div>
+            <div class="stat-value">${escHtml(Array.isArray(encodeMeta.assay_term_name) ? encodeMeta.assay_term_name.join(', ') : (encodeMeta.assay_term_name || 'N/A'))}</div>
           </div>
           <div class="stat-item">
             <div class="stat-label">Date Created</div>
