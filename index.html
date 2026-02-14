@@ -916,6 +916,7 @@ function renderResults(hdr, encodeMeta, fileUrl) {
   </div>`;
 
   // Attributes
+  let pendingGraphs = null;
   const attrKeys = Object.keys(hdr.attributes);
   if (attrKeys.length > 0) {
     // Separate "statistics" and "graphs" (long values) from short ones
@@ -943,7 +944,6 @@ function renderResults(hdr, encodeMeta, fileUrl) {
     </div>`;
 
     // Expandable sections for long attributes (statistics, graphs)
-    let pendingGraphs = null;
     for (const k of longKeys) {
       let content = hdr.attributes[k];
 
