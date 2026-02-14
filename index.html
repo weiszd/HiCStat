@@ -580,6 +580,10 @@ function renderResults(hdr, encodeMeta, fileUrl) {
             <div class="stat-label">Original File Name</div>
             <div class="stat-value">${escHtml(encodeMeta.submitted_file_name)}</div>
           </div>` : ''}
+          ${encodeMeta.href ? `<div class="stat-item" style="grid-column:1/-1">
+            <div class="stat-label">Download URL</div>
+            <div class="stat-value"><a href="https://www.encodeproject.org${encodeMeta.href}" target="_blank" style="color:var(--accent)">https://www.encodeproject.org${escHtml(encodeMeta.href)}</a></div>
+          </div>` : ''}
         </div>
       </div>
     </div>`;
