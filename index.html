@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HiCStat — .hic File Header Inspector</title>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/juicebox.js@2.5.1/dist/css/juicebox.css">
+  <script src="https://cdn.jsdelivr.net/npm/juicebox.js@2.5.1/dist/juicebox.min.js"></script>
   <style>
     :root {
       --bg: #0f1117;
@@ -255,6 +258,19 @@
     .chart-legend-item { display: flex; align-items: center; gap: 0.35rem; }
     .chart-legend-swatch { width: 14px; height: 3px; border-radius: 1px; }
     .chart-subtitle { font-size: 0.75rem; color: var(--text2); margin-bottom: 0.75rem; }
+    #juicebox-container {
+      width: 100%;
+      height: 600px;
+      background: #fff;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    #juicebox-container .hic-nav-bar-widget-container {
+      z-index: 10;
+    }
+    @media (max-width: 640px) {
+      #juicebox-container { height: 400px; }
+    }
     .stats-text-block {
       font-family: var(--mono);
       font-size: 0.8rem;
@@ -776,6 +792,46 @@ function buildChartCard(canvasId, title, subtitle, legendItems) {
 }
 
 let lastGraphsData = null;
+let juiceboxBrowser = null;
+
+// ─── Juicebox Viewer ─────────────────────────────────────────────
+function getJuiceboxUrl(fileUrl) {
+  // For S3 URLs that need proxy, we can't easily proxy the whole Juicebox
+  // streaming protocol. Return the original URL and let Juicebox try directly.
+  // For ENCODE URLs, the 307 redirect to presigned S3 should work.
+  return fileUrl;
+}
+
+async function initJuicebox(fileUrl) {
+  const container = document.getElementById('juicebox-container');
+  if (!container) return;
+
+  // Destroy previous instance if any
+  if (juiceboxBrowser) {
+    try { juiceboxBrowser.dispose(); } catch {}
+    juiceboxBrowser = null;
+    container.innerHTML = '';
+  }
+
+  // Check if juicebox library loaded
+  if (typeof juicebox === 'undefined' && typeof hic === 'undefined') {
+    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:0.9rem">Juicebox library failed to load</div>';
+    return;
+  }
+
+  const jb = (typeof juicebox !== 'undefined') ? juicebox : hic;
+  const url = getJuiceboxUrl(fileUrl);
+
+  try {
+    juiceboxBrowser = await jb.init(container, { url });
+  } catch (err) {
+    console.warn('Juicebox init failed:', err);
+    container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:0.9rem;padding:1rem;text-align:center">
+      Unable to load contact map viewer.<br>
+      <span style="font-size:0.8rem;color:#666;margin-top:0.4rem">The file server may not support CORS for streaming.</span>
+    </div>`;
+  }
+}
 
 // ─── Render ──────────────────────────────────────────────────────
 function renderResults(hdr, encodeMeta, fileUrl) {
@@ -841,6 +897,15 @@ function renderResults(hdr, encodeMeta, fileUrl) {
       </div>
     </div>`;
   }
+
+  // Juicebox contact map viewer
+  html += `
+  <div class="card">
+    <div class="card-header">Contact Map Viewer</div>
+    <div class="card-body" style="padding:0">
+      <div id="juicebox-container"></div>
+    </div>
+  </div>`;
 
   // Main header info card
   html += `
@@ -1036,6 +1101,9 @@ function renderResults(hdr, encodeMeta, fileUrl) {
     lastGraphsData = pendingGraphs;
     requestAnimationFrame(() => renderGraphCanvases(pendingGraphs));
   }
+
+  // Initialize Juicebox contact map viewer
+  requestAnimationFrame(() => initJuicebox(fileUrl));
 }
 
 function renderGraphCanvases(g) {
@@ -1064,7 +1132,13 @@ function showError(msg) {
   el.classList.add('visible');
 }
 function hideError() { document.getElementById('error').classList.remove('visible'); }
-function hideResults() { document.getElementById('results').classList.remove('visible'); }
+function hideResults() {
+  document.getElementById('results').classList.remove('visible');
+  if (juiceboxBrowser) {
+    try { juiceboxBrowser.dispose(); } catch {}
+    juiceboxBrowser = null;
+  }
+}
 
 function setExample(val) {
   document.getElementById('input').value = val;
