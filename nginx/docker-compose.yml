@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  hicstream-nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hicstream-nginx
+    ports:
+      - "8021:8020"
+    volumes:
+      # Mount host root as read-only (rslave needed because source includes docker daemon root)
+      - type: bind
+        source: /
+        target: /data
+        read_only: true
+        bind:
+          propagation: rslave
+    environment:
+      - TZ=UTC
+    restart: unless-stopped
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "com.hicstream.description=HiC file streaming server (nginx) with Range request and CORS support"
+      - "com.hicstream.version=1.0"
+
+networks:
+  default:
+    name: hicstream-nginx-network

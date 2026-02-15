@@ -9,8 +9,13 @@ services:
     ports:
       - "8020:8020"
     volumes:
-      # Mount host root as read-only
-      - /:/data:ro
+      # Mount host root as read-only (rslave needed because mount source includes daemon root)
+      - type: bind
+        source: /
+        target: /data
+        read_only: true
+        bind:
+          propagation: rslave
     environment:
       # Optional: Set timezone
       - TZ=UTC

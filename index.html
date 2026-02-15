@@ -484,7 +484,7 @@ async function resolveUrl(input) {
   // Local file path → route through hicstream backend
   if (input.startsWith('/') || /^[a-zA-Z]:[\\\/]/.test(input)) {
     const cleanPath = input.startsWith('/') ? input : '/' + input.replace(/\\/g, '/');
-    return { url: 'https://hicstream.3dg.io' + cleanPath, encodeMetadata: null };
+    return { url: 'https://s.3dg.io' + cleanPath, encodeMetadata: null };
   }
   throw new Error(`Invalid input. Provide an ENCODE accession (ENCFF...), a URL, or a local file path.`);
 }
