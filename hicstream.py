@@ -8,6 +8,10 @@ using a reverse proxy (e.g., Caddy, nginx, Cloudflare Tunnel).
 
 Usage:
     python hicstream.py -d /path/to/hic/files -p 8020
+
+By default, only .hic files are served and directory listing is disabled.
+To allow other file types:  --extensions .hic .cool .mcool
+To enable directory listing: --allow-dirlist
 """
 import os
 import argparse
@@ -23,6 +27,9 @@ CORS_HEADERS = {
 
 
 class HicStreamHandler(SimpleHTTPRequestHandler):
+    allow_dirlist = False
+    allowed_extensions = {".hic"}
+
     def __init__(self, *args, directory=None, **kwargs):
         super().__init__(*args, directory=directory or os.getcwd(), **kwargs)
 
@@ -33,6 +40,13 @@ class HicStreamHandler(SimpleHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
 
+    def _check_extension(self, path):
+        """Return True if file extension is in the allowed set."""
+        if not self.allowed_extensions:
+            return True
+        _, ext = os.path.splitext(path)
+        return ext.lower() in self.allowed_extensions
+
     def send_head(self):
         """Override to support Range requests and add CORS headers."""
         path = self.translate_path(self.path)
@@ -42,7 +56,14 @@ class HicStreamHandler(SimpleHTTPRequestHandler):
             return None
 
         if os.path.isdir(path):
+            if not self.allow_dirlist:
+                self.send_error(403, "Directory listing is disabled")
+                return None
             return super().send_head()
+
+        if not self._check_extension(path):
+            self.send_error(403, "File type not allowed")
+            return None
 
         file_size = os.path.getsize(path)
         start, end = 0, file_size - 1
@@ -103,12 +124,33 @@ def main():
                         help="Port to serve on (default: 8020)")
     parser.add_argument("-d", "--directory", type=str, default=os.getcwd(),
                         help="Directory to serve (default: current directory)")
+    parser.add_argument("--allow-dirlist", action="store_true", default=False,
+                        help="Enable directory listing (default: disabled)")
+    parser.add_argument("--extensions", nargs="+", default=[".hic"],
+                        metavar="EXT",
+                        help="Allowed file extensions (default: .hic). "
+                             "Use --extensions '*' to allow all files.")
     args = parser.parse_args()
+
+    # Configure handler class attributes
+    if args.extensions == ["*"]:
+        HicStreamHandler.allowed_extensions = set()  # empty = allow all
+    else:
+        HicStreamHandler.allowed_extensions = {
+            ext if ext.startswith(".") else f".{ext}"
+            for ext in args.extensions
+        }
+    HicStreamHandler.allow_dirlist = args.allow_dirlist
 
     handler = lambda *a, **kw: HicStreamHandler(*a, directory=args.directory, **kw)
     httpd = HTTPServer(("0.0.0.0", args.port), handler)
 
+    ext_display = "*" if not HicStreamHandler.allowed_extensions else \
+        ", ".join(sorted(HicStreamHandler.allowed_extensions))
+
     print(f"hicstream — serving: {args.directory}")
+    print(f"  Allowed extensions: {ext_display}")
+    print(f"  Directory listing:  {'enabled' if args.allow_dirlist else 'disabled'}")
     print(f"  Local:   http://localhost:{args.port}")
     print(f"  Network: http://0.0.0.0:{args.port}")
     print(f"\nExpose via reverse proxy at https://hicstream.3dg.io")
