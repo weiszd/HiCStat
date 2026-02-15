@@ -280,6 +280,48 @@
       line-height: 1.5;
       color: var(--text2);
     }
+    .url-display-container {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+    }
+    .url-display {
+      flex: 1;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--text2);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .copy-btn {
+      padding: 0.4rem 0.8rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .copy-btn:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .copy-btn.copied {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
   </style>
 </head>
 <body>
@@ -1085,6 +1127,13 @@ function renderResults(hdr, encodeMeta, fileUrl) {
   <div class="card">
     <div class="card-header">Contact Map Viewer</div>
     <div class="card-body" style="padding:0">
+      <div class="url-display-container">
+        <div class="url-display" title="${escHtml(fileUrl)}">${escHtml(fileUrl)}</div>
+        <button class="copy-btn" onclick="copyUrlToClipboard('${escHtml(fileUrl)}', this)">
+          <span>📋</span>
+          <span class="copy-text">Copy URL</span>
+        </button>
+      </div>
       <div id="juicebox-container"></div>
     </div>
   </div>`;
@@ -1139,6 +1188,45 @@ function hideResults() {
 function setExample(val) {
   document.getElementById('input').value = val;
   run();
+}
+
+function copyUrlToClipboard(url, btn) {
+  // Use modern clipboard API
+  navigator.clipboard.writeText(url).then(() => {
+    // Visual feedback
+    btn.classList.add('copied');
+    const textEl = btn.querySelector('.copy-text');
+    const originalText = textEl.textContent;
+    textEl.textContent = 'Copied!';
+
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      textEl.textContent = originalText;
+    }, 2000);
+  }).catch(err => {
+    console.error('Failed to copy:', err);
+    // Fallback for older browsers
+    const textArea = document.createElement('textarea');
+    textArea.value = url;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      btn.classList.add('copied');
+      const textEl = btn.querySelector('.copy-text');
+      const originalText = textEl.textContent;
+      textEl.textContent = 'Copied!';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        textEl.textContent = originalText;
+      }, 2000);
+    } catch (e) {
+      console.error('Fallback copy failed:', e);
+    }
+    document.body.removeChild(textArea);
+  });
 }
 
 // Redraw charts on resize
