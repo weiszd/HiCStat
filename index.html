@@ -260,16 +260,12 @@
     .chart-subtitle { font-size: 0.75rem; color: var(--text2); margin-bottom: 0.75rem; }
     #juicebox-container {
       width: 100%;
-      height: 600px;
       background: #fff;
       border-radius: 6px;
       overflow: hidden;
     }
     #juicebox-container .hic-nav-bar-widget-container {
       z-index: 10;
-    }
-    @media (max-width: 640px) {
-      #juicebox-container { height: 400px; }
     }
     .stats-text-block {
       font-family: var(--mono);
@@ -898,15 +894,6 @@ function renderResults(hdr, encodeMeta, fileUrl) {
     </div>`;
   }
 
-  // Juicebox contact map viewer
-  html += `
-  <div class="card">
-    <div class="card-header">Contact Map Viewer</div>
-    <div class="card-body" style="padding:0">
-      <div id="juicebox-container"></div>
-    </div>
-  </div>`;
-
   // Main header info card
   html += `
   <div class="card">
@@ -1092,6 +1079,15 @@ function renderResults(hdr, encodeMeta, fileUrl) {
       </div>`;
     }
   }
+
+  // Juicebox contact map viewer (at the end)
+  html += `
+  <div class="card">
+    <div class="card-header">Contact Map Viewer</div>
+    <div class="card-body" style="padding:0">
+      <div id="juicebox-container"></div>
+    </div>
+  </div>`;
 
   r.innerHTML = html;
   r.classList.add('visible');
