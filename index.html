@@ -278,7 +278,7 @@
     </header>
 
     <div class="input-group">
-      <input type="text" id="input" placeholder="ENCODE accession (ENCFF...) or direct URL to .hic file" spellcheck="false">
+      <input type="text" id="input" placeholder="ENCODE accession, URL, or local path (/data/inter.hic)" spellcheck="false">
       <button class="btn" id="goBtn" onclick="run()">Inspect</button>
     </div>
     <div class="examples">
@@ -427,7 +427,12 @@ async function resolveUrl(input) {
   const upper = input.toUpperCase();
   if (/^ENCFF[A-Z0-9]{6}$/.test(upper)) return resolveEncodeAccession(upper);
   if (/^[A-Z0-9]{6}$/.test(upper)) return resolveEncodeAccession('ENCFF' + upper);
-  throw new Error(`Invalid input. Provide an ENCODE file accession (ENCFF...) or a URL.`);
+  // Local file path → route through hicstream backend
+  if (input.startsWith('/') || /^[a-zA-Z]:[\\\/]/.test(input)) {
+    const cleanPath = input.startsWith('/') ? input : '/' + input.replace(/\\/g, '/');
+    return { url: 'https://hicstream.3dg.io' + cleanPath, encodeMetadata: null };
+  }
+  throw new Error(`Invalid input. Provide an ENCODE accession (ENCFF...), a URL, or a local file path.`);
 }
 
 async function resolveEncodeAccession(accession) {
