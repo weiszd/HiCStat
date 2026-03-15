@@ -10,7 +10,15 @@ HiCStat is a zero-dependency, single-page web app that inspects `.hic` file head
 
 ## Deployment
 
+### GitHub Pages
 Push to `master` triggers GitHub Actions (`.github/workflows/pages.yml`) which deploys the repo root to GitHub Pages. There is no build step — `index.html` is served directly.
+
+**Live site:** https://weiszd.github.io/HiCStat/
+
+### Cloudflare Pages
+Push to `master` also triggers `.github/workflows/cloudflare-pages.yml` which deploys to Cloudflare Pages. Requires `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets in GitHub. Project name: `hicstat`. See [CLOUDFLARE.md](CLOUDFLARE.md) for setup details.
+
+SPA routing uses `_redirects` file instead of `404.html` on Cloudflare.
 
 Git config for this repo: user `weiszd`, email `weiszd@users.noreply.github.com`.
 

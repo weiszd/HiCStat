@@ -1,0 +1,3 @@
+# Cloudflare Pages SPA routing
+# Redirects /ENCFF090JFB to /?q=ENCFF090JFB for deep linking
+/* /?q=:splat 200

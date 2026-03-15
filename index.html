@@ -328,7 +328,7 @@
   <div class="container">
     <header>
       <h1>HiC<span>Stat</span></h1>
-      <p>Inspect .hic file headers from ENCODE or any URL</p>
+      <p>Inspect .hic file from any URL, ENCODE accession, or Voltron local path</p>
     </header>
 
     <div class="input-group">
@@ -337,10 +337,11 @@
     </div>
     <div class="examples">
       Try:
-      <a onclick="setExample('ENCFF622YUQ')">ENCFF622YUQ</a> ·
-      <a onclick="setExample('ENCFF148QCR')">ENCFF148QCR</a> ·
-      <a onclick="setExample('https://hicfiles.s3.amazonaws.com/hiseq/gm12878/in-situ/combined.hic')">GM12878 in-situ (S3)</a> ·
-      <a onclick="setExample('https://4dn-open-data-public.s3.amazonaws.com/fourfront-webprod/wfoutput/c377953b-0e61-426b-a905-abab2d5a3002/4DNFI9VXTBE2.hic')">4DN GM12878</a>
+      <a onclick="setExample('ENCFF622YUQ')">ENCFF622YUQ</a> - 
+      <a onclick="setExample('ENCFF148QCR')">ENCFF148QCR</a> -
+      <a onclick="setExample('https://hicfiles.s3.amazonaws.com/hiseq/gm12878/in-situ/combined.hic')">GM12878 in-situ (S3)</a> -
+      <a onclick="setExample('https://4dn-open-data-public.s3.amazonaws.com/fourfront-webprod/wfoutput/c377953b-0e61-426b-a905-abab2d5a3002/4DNFI9VXTBE2.hic')">4DN GM12878</a> -
+      <a onclick="setExample('/mnt/altnas/work/PROCESSED/HIC17844/aligned_Loxafr3.0_HiC/inter_30.hic')">/mnt/altnas/.../HIC17844/aligned_Loxafr3.0_HiC/inter_30.hic</a>
     </div>
 
     <div id="status"><span class="spinner"></span><span id="statusText">Loading...</span></div>
@@ -936,6 +937,26 @@ function renderResults(hdr, encodeMeta, fileUrl) {
     </div>`;
   }
 
+  // Contact map viewer (URL + Juicebox)
+  html += `
+  <div class="card">
+    <div class="card-header">Contact Map Viewer</div>
+    <div class="card-body" style="padding:0">
+      <div class="url-display-container">
+        <div class="url-display" title="${escHtml(fileUrl)}">${escHtml(fileUrl)}</div>
+        <button class="copy-btn" onclick="copyUrlToClipboard('${escHtml(fileUrl)}', this)">
+          <span>📋</span>
+          <span class="copy-text">Copy URL</span>
+        </button>
+        <button class="copy-btn" onclick="window.open('https://aidenlab.org/juicebox/?hicUrl=' + encodeURIComponent('${escHtml(fileUrl)}'), '_blank')">
+          <span>🧊</span>
+          <span class="copy-text">Open in Juicebox</span>
+        </button>
+      </div>
+      <div id="juicebox-container"></div>
+    </div>
+  </div>`;
+
   // Main header info card
   html += `
   <div class="card">
@@ -951,7 +972,7 @@ function renderResults(hdr, encodeMeta, fileUrl) {
           <div class="stat-value large">${escHtml(hdr.genomeId)}</div>
         </div>
         <div class="stat-item">
-          <div class="stat-label">Chromosomes</div>
+          <div class="stat-label">HIC Chromosomes Entries</div>
           <div class="stat-value large">${hdr.nChrs}</div>
         </div>
         <div class="stat-item">
@@ -1121,22 +1142,6 @@ function renderResults(hdr, encodeMeta, fileUrl) {
       </div>`;
     }
   }
-
-  // Juicebox contact map viewer (at the end)
-  html += `
-  <div class="card">
-    <div class="card-header">Contact Map Viewer</div>
-    <div class="card-body" style="padding:0">
-      <div class="url-display-container">
-        <div class="url-display" title="${escHtml(fileUrl)}">${escHtml(fileUrl)}</div>
-        <button class="copy-btn" onclick="copyUrlToClipboard('${escHtml(fileUrl)}', this)">
-          <span>📋</span>
-          <span class="copy-text">Copy URL</span>
-        </button>
-      </div>
-      <div id="juicebox-container"></div>
-    </div>
-  </div>`;
 
   r.innerHTML = html;
   r.classList.add('visible');
