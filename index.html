@@ -651,23 +651,35 @@ function drawLineChart(canvas, opts) {
   ctx.fillRect(0, 0, w, h);
 
   // Compute ranges
-  let xMin = Infinity, xMax = -Infinity, yMax = 0;
+  let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
   for (const s of opts.series) {
     for (const p of s.data) {
       if (opts.logX && p.x <= 0) continue;
+      if (opts.logY && p.y <= 0) continue;
       if (p.x < xMin) xMin = p.x;
       if (p.x > xMax) xMax = p.x;
+      if (p.y < yMin) yMin = p.y;
       if (p.y > yMax) yMax = p.y;
     }
   }
-  yMax = Math.max(yMax * 1.1, 1);
+  if (opts.logY) {
+    yMin = Math.log10(Math.max(1, yMin));
+    yMax = Math.log10(Math.max(10, yMax));
+    yMax += (yMax - yMin) * 0.05; // 5% padding
+  } else {
+    yMin = 0;
+    yMax = Math.max(yMax * 1.1, 1);
+  }
   if (opts.logX) { xMin = Math.log10(Math.max(1, xMin)); xMax = Math.log10(Math.max(10, xMax)); }
 
   const sx = (x) => {
     const val = opts.logX ? Math.log10(Math.max(1, x)) : x;
     return m.left + ((val - xMin) / (xMax - xMin || 1)) * pW;
   };
-  const sy = (y) => m.top + pH - (Math.max(0, y) / yMax) * pH;
+  const sy = (y) => {
+    const val = opts.logY ? Math.log10(Math.max(1, y)) : y;
+    return m.top + pH - ((val - yMin) / (yMax - yMin || 1)) * pH;
+  };
 
   // Grid
   ctx.strokeStyle = '#1e2233';
@@ -691,9 +703,21 @@ function drawLineChart(canvas, opts) {
   ctx.font = '10px -apple-system, sans-serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
-  for (let i = 0; i <= nGY; i++) {
-    const val = yMax * (1 - i / nGY);
-    ctx.fillText(fmtLogLabel(val), m.left - 6, m.top + (pH / nGY) * i);
+  if (opts.logY) {
+    const lo = Math.ceil(yMin), hi = Math.floor(yMax);
+    for (let e = lo; e <= hi; e++) {
+      const yPos = m.top + pH - ((e - yMin) / (yMax - yMin || 1)) * pH;
+      ctx.fillText(fmtLogLabel(Math.pow(10, e)), m.left - 6, yPos);
+      // grid line
+      ctx.save(); ctx.strokeStyle = '#1e2233'; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(m.left, yPos); ctx.lineTo(m.left + pW, yPos); ctx.stroke();
+      ctx.restore();
+    }
+  } else {
+    for (let i = 0; i <= nGY; i++) {
+      const val = yMax * (1 - i / nGY);
+      ctx.fillText(fmtLogLabel(val), m.left - 6, m.top + (pH / nGY) * i);
+    }
   }
 
   // X tick labels
@@ -738,6 +762,7 @@ function drawLineChart(canvas, opts) {
     let started = false;
     for (const p of s.data) {
       if (opts.logX && p.x <= 0) continue;
+      if (opts.logY && p.y <= 0) continue;
       const px = sx(p.x), py = sy(p.y);
       if (!started) { ctx.moveTo(px, py); started = true; }
       else ctx.lineTo(px, py);
@@ -804,6 +829,7 @@ function renderOrientationChart(canvas, D) {
     xLabel: 'Genomic distance (bp)',
     yLabel: 'Read pair count',
     logX: true,
+    logY: true,
   });
 }
 
@@ -1091,7 +1117,7 @@ function renderResults(hdr, encodeMeta, fileUrl) {
           if (parsed.D) {
             html += buildChartCard('chart_orientation',
               'Read Pair Orientation vs Distance',
-              'Pair type counts across genomic distance (log scale)',
+              'Pair type counts across genomic distance (log-log scale)',
               [
                 { color: '#6c8cff', label: 'Inner' },
                 { color: '#4ade80', label: 'Outer' },
