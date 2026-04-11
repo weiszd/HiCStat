@@ -1,0 +1,15 @@
+# Claude Code
+.claude/
+
+# VS Code local history
+.history/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~
