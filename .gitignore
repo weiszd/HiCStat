@@ -13,3 +13,7 @@ Desktop.ini
 *.swp
 *.swo
 *~
+
+#Cloudflare Pages
+.cloudflare/
+.wrangler/
