@@ -859,6 +859,91 @@ function buildChartCard(canvasId, title, subtitle, legendItems) {
 let lastGraphsData = null;
 let juiceboxBrowser = null;
 
+// ─── Normalization Vector Types (via hic-straw) ─────────────────
+async function fetchNormalizationData(url) {
+  const { default: Straw } = await import('https://cdn.jsdelivr.net/npm/hic-straw@2.1.4/dist/hic-straw.esm.js');
+  const straw = new Straw({ url });
+  const norms = await straw.getNormalizationOptions();
+
+  // Extract per-resolution availability from normVectorIndex.
+  // Key format: "type_chrIdx_unit_binSize" e.g. "KR_1_BP_5000", "VC_SQRT_0_BP_10000"
+  // norm type may contain underscores, so parse from the right.
+  let normResolutions = null;
+  try {
+    const nvIndex = straw.hicFile && straw.hicFile.normVectorIndex;
+    if (nvIndex && Object.keys(nvIndex).length > 0) {
+      normResolutions = {};
+      for (const key of Object.keys(nvIndex)) {
+        const parts = key.split('_');
+        if (parts.length < 4) continue;
+        const binSize = parseInt(parts[parts.length - 1]);
+        const unit = parts[parts.length - 2];
+        // everything before chrIdx and unit/binSize is the norm type
+        const normType = parts.slice(0, parts.length - 3).join('_');
+        if (unit !== 'BP' || isNaN(binSize) || binSize <= 0) continue;
+        if (!normResolutions[normType]) normResolutions[normType] = new Set();
+        normResolutions[normType].add(binSize);
+      }
+      for (const k of Object.keys(normResolutions)) {
+        normResolutions[k] = [...normResolutions[k]].sort((a, b) => a - b);
+      }
+    }
+  } catch (e) {
+    console.warn('Could not read normVectorIndex', e);
+  }
+
+  return { norms, normResolutions };
+}
+
+async function loadNormalizationTypes(fileUrl, bpResolutions) {
+  const container = document.getElementById('norm-types-content');
+  if (!container) return;
+  try {
+    const { norms, normResolutions } = await fetchNormalizationData(fileUrl);
+    if (!norms || norms.length === 0) {
+      container.innerHTML = '<span style="color:var(--text2)">None found</span>';
+      return;
+    }
+
+    // Determine resolution columns: use header resolutions, fall back to union from map
+    let resCols = bpResolutions && bpResolutions.length > 0
+      ? [...bpResolutions].sort((a, b) => a - b)
+      : [];
+    if (resCols.length === 0 && normResolutions) {
+      const all = new Set();
+      for (const r of Object.values(normResolutions)) r.forEach(v => all.add(v));
+      resCols = [...all].sort((a, b) => a - b);
+    }
+
+    const hasResCols = resCols.length > 0;
+
+    let html = '<table><thead><tr><th>Normalization</th>';
+    if (hasResCols) {
+      for (const r of resCols) html += `<th style="text-align:center">${escHtml(fmtBpRes(r))}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+
+    for (const norm of norms) {
+      html += `<tr><td><strong>${escHtml(norm)}</strong></td>`;
+      if (hasResCols) {
+        const isNone = norm === 'NONE';
+        const avail = normResolutions && normResolutions[norm] ? new Set(normResolutions[norm]) : null;
+        for (const r of resCols) {
+          // NONE needs no vectors — always available; others rely on map presence
+          const has = isNone || (avail ? avail.has(r) : false);
+          html += `<td style="text-align:center;color:${has ? 'var(--accent)' : 'var(--text2)'}">${has ? '✓' : '—'}</td>`;
+        }
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  } catch (err) {
+    console.warn('Failed to load normalization types:', err);
+    container.innerHTML = `<span style="color:var(--text2)">Unable to load — ${escHtml(err.message)}</span>`;
+  }
+}
+
 // ─── Juicebox Viewer ─────────────────────────────────────────────
 function getJuiceboxUrl(fileUrl) {
   // For S3 URLs that need proxy, we can't easily proxy the whole Juicebox
@@ -1037,6 +1122,15 @@ function renderResults(hdr, encodeMeta, fileUrl) {
           : '<span style="color:var(--text2)">None</span>'
         }
       </div>
+    </div>
+  </div>`;
+
+  // Normalizations (loaded async via hic-straw)
+  html += `
+  <div class="card">
+    <div class="card-header">Normalization Vectors</div>
+    <div class="card-body" id="norm-types-content">
+      <span style="color:var(--text2)"><span class="spinner"></span> Loading normalization types...</span>
     </div>
   </div>`;
 
@@ -1294,6 +1388,9 @@ async function run() {
     // 4. Render
     hideStatus();
     renderResults(header, encodeMetadata, url);
+
+    // 5. Async: load normalization types via hic-straw
+    loadNormalizationTypes(url, header.bpResolutions);
 
   } catch (err) {
     hideStatus();
