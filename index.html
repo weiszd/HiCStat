@@ -492,13 +492,19 @@ async function resolveUrl(input) {
 
 async function resolveEncodeAccession(accession) {
   setStatus(`Fetching ENCODE metadata for ${accession}...`);
-  const resp = await fetch(`https://www.encodeproject.org/files/${accession}/?format=json`, {
+  // ENCODE fronted www.encodeproject.org with an AWS WAF CAPTCHA rule that blocks
+  // browser cross-origin fetches, so route the JSON API through our proxy (server-side
+  // requests are not challenged).
+  const apiUrl = `https://www.encodeproject.org/files/${accession}/?format=json`;
+  const resp = await fetch(`${S3_PROXY_URL}?url=${encodeURIComponent(apiUrl)}`, {
     headers: { 'Accept': 'application/json' }
   });
   if (!resp.ok) throw new Error(`ENCODE API returned ${resp.status} for ${accession}. Check the accession is valid.`);
   const meta = await resp.json();
   if (meta.file_format !== 'hic') throw new Error(`${accession} is not a .hic file (format: ${meta.file_format})`);
-  const downloadUrl = `https://www.encodeproject.org${meta.href}`;
+  // Prefer the direct S3 URL (encode-public bucket, public CORS, no WAF) over the
+  // download href, which 307-redirects through the WAF-guarded www.encodeproject.org.
+  const downloadUrl = meta.cloud_metadata?.url || `https://www.encodeproject.org${meta.href}`;
   return { url: downloadUrl, encodeMetadata: meta };
 }
 
