@@ -13,6 +13,10 @@ CONTAINER="hicstream-nginx-test"
 PORT="${TEST_PORT:-18080}"
 CONF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/nginx.conf"
 FIXDIR="$(mktemp -d)"
+# mktemp -d always makes this 0700, and the nginx image runs its worker
+# as non-root uid 101 (nginx/Dockerfile: USER nginx) — without opening
+# it up, the worker can't traverse into /data and every fixture 404s.
+chmod 755 "$FIXDIR"
 BASE="http://localhost:$PORT"
 
 cleanup() {
