@@ -51,6 +51,29 @@ echo 'noext'     > "$FIXDIR/README"
 mkdir -p "$FIXDIR/sub"
 printf 'chr2\t1\t2\tx\n' > "$FIXDIR/sub/nested.bed"
 
+# --- security canaries: sensitive extensions that must never become
+# allowlisted. If the map is ever widened to include one of these, this
+# suite must go red rather than silently keep reporting failed=0
+# (fix.sh already exists above as a non-allowlisted-are-denied fixture).
+bin fix.pem     64
+bin fix.env     64
+bin fix.key     64
+bin fix.db      64
+bin fix.log     64
+bin fix.yaml    64
+bin fix.sqlite  64
+bin fix.pack    64
+bin fix.py      64
+
+# --- extension-anchoring edge cases: prove the regexes are anchored with
+# $ and that the optional (\.b?gz)? group can't stand alone ---
+echo 'x' > "$FIXDIR/secret.bed.txt"
+echo 'x' > "$FIXDIR/x.bedx"
+echo 'x' > "$FIXDIR/x.bed.bak"
+echo 'x' > "$FIXDIR/ok.bed."
+echo 'x' > "$FIXDIR/secret.gz"
+echo 'x' > "$FIXDIR/secret.bgz"
+
 # ---------------- server ----------------
 docker rm -f "$CONTAINER" >/dev/null 2>&1
 if ! docker run -d --name "$CONTAINER" -p "$PORT:8020" \
@@ -80,6 +103,16 @@ check() { # check <desc> <want> <got>
         FAIL=$((FAIL+1)); printf '  FAIL  %-44s got=%s want=%s\n' "$1" "$3" "$2"
     fi
 }
+check_any() { # check_any <desc> <got> <want1> [want2 ...] — passes if got matches any want
+    local desc="$1" got="$2"; shift 2
+    for w in "$@"; do
+        if [ "$w" = "$got" ]; then
+            PASS=$((PASS+1)); printf '  ok    %-44s %s\n' "$desc" "$got"
+            return
+        fi
+    done
+    FAIL=$((FAIL+1)); printf '  FAIL  %-44s got=%s want one of=%s\n' "$desc" "$got" "$*"
+}
 # --connect-timeout/--max-time on every server-facing curl below: without
 # them a hung nginx.conf change (deadlocked worker, bad timeout directive)
 # blocks the script forever, the EXIT trap never fires, and the test
@@ -102,6 +135,33 @@ echo "== non-allowlisted are denied =="
 for f in fix.txt fix.sh fix.conf README etc/passwd; do
     check "GET /$f denied" 403 "$(code "$BASE/$f")"
 done
+
+echo "== sensitive-extension canaries (must stay denied) =="
+for f in fix.pem fix.env fix.key fix.db fix.log fix.yaml fix.sqlite fix.pack fix.sh fix.py; do
+    check "GET /$f denied" 403 "$(code "$BASE/$f")"
+done
+
+echo "== extension-anchoring edge cases =="
+for f in secret.bed.txt x.bedx x.bed.bak "ok.bed." secret.gz secret.bgz; do
+    check "GET /$f denied" 403 "$(code "$BASE/$f")"
+done
+
+echo "== path traversal =="
+# --path-as-is stops curl from normalizing dot-segments locally, so the
+# raw request line actually reaches nginx as written.
+# The unencoded ../ is normalized by nginx's own URI parser into
+# /etc/passwd before the map is evaluated, so it 403s the same way a
+# direct /etc/passwd request does. The percent-encoded forms bypass that
+# early normalization and nginx may reject them outright with 400 before
+# location matching even runs — accept 400 or 403 for those two rather
+# than asserting a single code we have not actually observed.
+check "dot-dot traversal (unencoded)" 403 "$(code --path-as-is "$BASE/fix.bed/../etc/passwd")"
+check_any "dot-dot traversal (encoded slash)" "$(code --path-as-is "$BASE/fix.bed%2f..%2fetc%2fpasswd")" 400 403
+check_any "dot-dot traversal (encoded dot)"   "$(code --path-as-is "$BASE/%2e%2e/etc/passwd")" 400 403
+
+echo "== extensionless paths =="
+check "GET / denied"     403 "$(code "$BASE/")"
+check "GET /sub/ denied" 403 "$(code "$BASE/sub/")"
 
 echo "== range requests =="
 rc=$(curl -s --connect-timeout 3 --max-time 10 -H 'Range: bytes=10-19' -o "$FIXDIR/.range" -w '%{http_code}' "$BASE/fix.bigwig")
