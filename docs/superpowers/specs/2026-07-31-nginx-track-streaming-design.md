@@ -67,7 +67,7 @@ map $uri $track_ok {
     ~*\.hic$                                            1;
 
     # Signal tracks, binary (no .gz variant — already compressed/indexed)
-    ~*\.(bigwig|bw|bigbed|bb|tdf)$                      1;
+    ~*\.(bigwig|bw|bigbed|tdf)$                         1;
 
     # Signal tracks, text
     ~*\.(wig|bedgraph|bdg)(\.b?gz)?$                    1;
@@ -79,12 +79,39 @@ map $uri $track_ok {
     ~*\.(vcf|seg|maf|mut|gwas)(\.b?gz)?$                1;
 
     # 2D annotations (Juicebox loops / domains)
-    ~*\.(bedpe|longrange|interact|links)(\.b?gz)?$      1;
+    ~*\.(bedpe|longrange|interact)(\.b?gz)?$            1;
 
-    # Tabix / igvtools sidecar indexes
-    ~*\.(tbi|csi|idx)$                                  1;
+    # Tabix sidecar indexes
+    ~*\.(tbi|csi)$                                      1;
 }
 ```
+
+### Extension-namespace collisions (post-review revision)
+
+The security review of the implemented config flagged that on a mount
+exposing host `/`, several extensions collide with unrelated file types, and
+verified live 200 responses for `/pack-abc.idx` and `/contacts.vcf`. Three
+were dropped from the table above by decision:
+
+| Dropped | Collides with | Why the loss is acceptable |
+|---|---|---|
+| `.idx` | git pack indexes (`.git/objects/pack/pack-<sha>.idx`) | igvtools-only; tabix `.tbi`/`.csi` are kept and cover the common case |
+| `.bb` | BitBake recipe files | redundant with `.bigbed`, which is kept |
+| `.links` | Debian packaging files | rare next to `.bedpe`/`.longrange`, both kept |
+
+**`.vcf` was deliberately kept** despite overlapping with vCard contact
+exports, which are arguably likelier than genomics VCFs on a machine's root
+filesystem. VCF is a primary IGV variant track format; dropping it would
+remove variant support from the server entirely. This is an accepted,
+explicit trade-off, not an oversight.
+
+The smoke test asserts all three dropped extensions return 403, so re-adding
+one turns the suite red rather than silently widening the surface.
+
+`Access-Control-Allow-Origin: *` was reviewed and deliberately left
+unchanged. It already was `*` for `.hic`; the readable surface widened from
+one extension to roughly thirty, which is a reachability question for the
+port rather than a header question.
 
 Patterns use `~*` (case-insensitive), so real-world camelCase spellings such as
 `narrowPeak`, `broadPeak`, and `bedGraph` match without separate entries.
