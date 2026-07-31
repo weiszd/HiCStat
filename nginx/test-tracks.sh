@@ -62,7 +62,7 @@ fi
 
 ready=0
 for _ in $(seq 1 40); do
-    if curl -fsS -o /dev/null "$BASE/health" 2>/dev/null; then ready=1; break; fi
+    if curl -fsS --connect-timeout 3 --max-time 10 -o /dev/null "$BASE/health" 2>/dev/null; then ready=1; break; fi
     sleep 0.25
 done
 if [ "$ready" -ne 1 ]; then
@@ -80,9 +80,14 @@ check() { # check <desc> <want> <got>
         FAIL=$((FAIL+1)); printf '  FAIL  %-44s got=%s want=%s\n' "$1" "$3" "$2"
     fi
 }
-code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+# --connect-timeout/--max-time on every server-facing curl below: without
+# them a hung nginx.conf change (deadlocked worker, bad timeout directive)
+# blocks the script forever, the EXIT trap never fires, and the test
+# container + $FIXDIR leak indefinitely. A timeout surfaces as curl's "000"
+# http_code / empty header, which never matches a real expected value.
+code() { curl -s --connect-timeout 3 --max-time 10 -o /dev/null -w '%{http_code}' "$@"; }
 hdr() {  # hdr <url> <header-name-lowercase>
-    curl -s -I "$1" | tr -d '\r' | awk -v h="$2" -F': ' \
+    curl -s --connect-timeout 3 --max-time 10 -I "$1" | tr -d '\r' | awk -v h="$2" -F': ' \
         'tolower($1)==h {print $2; exit}'
 }
 
@@ -99,16 +104,17 @@ for f in fix.txt fix.sh fix.conf README etc/passwd; do
 done
 
 echo "== range requests =="
-rc=$(curl -s -H 'Range: bytes=10-19' -o "$FIXDIR/.range" -w '%{http_code}' "$BASE/fix.bigwig")
+rc=$(curl -s --connect-timeout 3 --max-time 10 -H 'Range: bytes=10-19' -o "$FIXDIR/.range" -w '%{http_code}' "$BASE/fix.bigwig")
 check "Range status"  206 "$rc"
 check "Range length"  10  "$(wc -c < "$FIXDIR/.range" | tr -d ' ')"
 check "Accept-Ranges" bytes "$(hdr "$BASE/fix.bed" accept-ranges)"
 
 echo "== CORS =="
 check "OPTIONS preflight"     204 "$(code -X OPTIONS "$BASE/fix.bed")"
-check "preflight ACAO"        '*' "$(curl -s -i -X OPTIONS "$BASE/fix.bed" | tr -d '\r' \
+check "preflight ACAO"        '*' "$(curl -s --connect-timeout 3 --max-time 10 -i -X OPTIONS "$BASE/fix.bed" | tr -d '\r' \
                                      | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2; exit}')"
-check "GET ACAO"              '*' "$(hdr "$BASE/fix.bed" access-control-allow-origin)"
+check "GET ACAO"              '*' "$(curl -s --connect-timeout 3 --max-time 10 -D - -o /dev/null "$BASE/fix.bed" | tr -d '\r' \
+                                     | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2; exit}')"
 check "OPTIONS on denied ext" 403 "$(code -X OPTIONS "$BASE/fix.txt")"
 
 echo "== write methods rejected =="
