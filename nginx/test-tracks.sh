@@ -65,6 +65,14 @@ bin fix.sqlite  64
 bin fix.pack    64
 bin fix.py      64
 
+# --- deliberately-excluded extensions: dropped from the map due to
+# namespace collisions with non-genomics files (git pack indexes,
+# BitBake recipes, Debian packaging). Fixtures + assertions lock the
+# decision in so a future re-add is a conscious choice, not a silent one.
+bin fix.idx     64
+bin fix.bb      64
+bin fix.links   64
+
 # --- extension-anchoring edge cases: prove the regexes are anchored with
 # $ and that the optional (\.b?gz)? group can't stand alone ---
 echo 'x' > "$FIXDIR/secret.bed.txt"
@@ -138,6 +146,11 @@ done
 
 echo "== sensitive-extension canaries (must stay denied) =="
 for f in fix.pem fix.env fix.key fix.db fix.log fix.yaml fix.sqlite fix.pack fix.sh fix.py; do
+    check "GET /$f denied" 403 "$(code "$BASE/$f")"
+done
+
+echo "== deliberately-excluded extensions (namespace collisions) =="
+for f in fix.idx fix.bb fix.links; do
     check "GET /$f denied" 403 "$(code "$BASE/$f")"
 done
 
