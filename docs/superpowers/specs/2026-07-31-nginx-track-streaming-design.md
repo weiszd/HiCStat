@@ -108,7 +108,9 @@ location / {
     # CORS headers on GET/HEAD responses — unchanged from current config
     add_header ... always;
 
-    limit_except GET HEAD {
+    # OPTIONS must be listed here or the preflight above is unreachable —
+    # see "Pre-existing bug: CORS preflight has never worked" below
+    limit_except GET HEAD OPTIONS {
         deny all;
     }
 
@@ -116,12 +118,64 @@ location / {
 }
 ```
 
-Ordering and header values are unchanged from what `.hic` receives today: the
-same `Access-Control-*` set, the same `Accept-Ranges: bytes`, the same
-OPTIONS→204 preflight, the same `limit_except GET HEAD`. The preflight `if` runs
-in the rewrite phase, ahead of `limit_except` in the access phase, so OPTIONS
-returns 204 rather than being denied — the current config already depends on
-this.
+Header values are unchanged from what `.hic` receives today: the same
+`Access-Control-*` set, the same `Accept-Ranges: bytes`, the same OPTIONS→204
+preflight block.
+
+### Pre-existing bug: CORS preflight has never worked
+
+An earlier draft of this spec claimed the preflight `if` runs in the rewrite
+phase ahead of `limit_except` in the access phase, so OPTIONS returns 204. That
+is **wrong**, and was verified wrong against the current `master` config:
+
+```
+PRODUCTION config, OPTIONS /fix.hic -> 403   (expected 204)
+PRODUCTION config, GET     /fix.hic -> 200
+```
+
+Isolating one variable at a time in a four-server-block test pinned the cause:
+
+| Variant | OPTIONS result |
+|---|---|
+| OPTIONS-`if` alone | 204 |
+| OPTIONS-`if` + `limit_except GET HEAD` | **403** |
+| allowlist-`if` + OPTIONS-`if`, no `limit_except` | 204 |
+| both `if`s + `limit_except GET HEAD` | **403** |
+
+`limit_except` is the only variable that changes the outcome; stacked `if`
+blocks are harmless. The mechanism: **`limit_except` creates an implicit nested
+location for the methods not listed.** OPTIONS is routed into that nested
+context, which contains nothing but `deny all`, and the parent location's
+rewrite-phase `if` is not inherited into it — so `return 204` is unreachable and
+the request 403s at the access phase.
+
+**Fix:** list OPTIONS among the permitted methods so it reaches the preflight
+handler, while write methods stay denied:
+
+```nginx
+limit_except GET HEAD OPTIONS {
+    deny all;
+}
+```
+
+Verified against the corrected config:
+
+```
+OPTIONS /fix.bed -> 204 + Access-Control-Allow-Origin/-Methods/-Headers
+GET     /fix.bed -> 200
+POST    /fix.bed -> 403      PUT -> 403      DELETE -> 403
+OPTIONS /fix.txt -> 403      (not allowlisted — allowlist still gates preflight)
+```
+
+**Why this went unnoticed and why it now matters.** `Range` is not a
+CORS-safelisted request header, so any *browser* client issuing a ranged
+cross-origin fetch must preflight first — and that preflight has been failing.
+IGV **desktop** is a Java client that performs no CORS negotiation at all, so it
+was never affected, which is the likely reason the bug went unreported. But
+igv.js and juicebox.js are exactly the browser clients this change targets, so
+shipping the widened allowlist without this fix would leave every new format
+unloadable from a browser. The fix is therefore in scope, not an incidental
+drive-by.
 
 `location = /health` is an exact match and continues to take priority over the
 `/` prefix, so the health endpoint is unaffected.
@@ -158,12 +212,21 @@ mounting a fixture directory:
 | Case | Expect |
 |---|---|
 | `GET /fix.hic` | 200, `Accept-Ranges: bytes` — regression check |
-| `GET /fix.bed`, `.bigwig`, `.vcf.gz`, `.bedpe`, `.tbi` | 200 + CORS headers |
-| `GET /fix.bigwig` with `Range: bytes=10-19` | 206, `Content-Range: bytes 10-19/…`, correct 10 bytes |
-| `OPTIONS /fix.bed` | 204 + `Access-Control-Allow-Origin: *` |
+| `GET /fix.bed`, `.bigwig`, `.vcf.gz`, `.vcf.gz.tbi`, `.bedpe` | 200 + CORS headers |
+| `GET /fix.bigwig` with `Range: bytes=10-19` | 206, `Content-Range: bytes 10-19/…`, exactly 10 bytes |
+| `OPTIONS /fix.bed` | 204 + `Access-Control-Allow-Origin: *` — the regression guard for the preflight bug |
+| `POST`/`PUT`/`DELETE` `/fix.bed` | 403 — write methods stay denied after adding OPTIONS to `limit_except` |
+| `OPTIONS /fix.txt` | 403 — allowlist gates preflight too |
 | `GET /etc/passwd`, `/fix.sh`, `/fix.txt` | 403 |
 | `GET /missing.bed` | 404 |
+| `GET /health` | 200 `ok` |
 
-If Docker is unavailable on the implementation host, `nginx -t` plus a
-`map`-pattern unit check against the case table is the fallback, and the
-container smoke test is deferred and reported as not run.
+Docker is available on this host, but **the daemon socket is blocked by the
+Claude Code sandbox** — `docker` reports `permission denied while trying to
+connect to the docker API at unix:///var/run/docker.sock`. All `docker` commands
+in the implementation must run with `dangerouslyDisableSandbox: true`. `curl`
+works inside the sandbox normally.
+
+The live production container `hicstream-nginx` (host port 8021) must not be
+disturbed by testing; the smoke test binds its own high port and its own
+fixture directory.
