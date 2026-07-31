@@ -212,6 +212,15 @@ apply to the 403 emitted by the allowlist check, denied requests now carry CORS
 headers. This is harmless and mildly useful — a browser sees an honest 403
 instead of an opaque CORS failure.
 
+CORS headers on error responses also mean a cross-origin page can distinguish
+403 from 404 without ever seeing the response body: 403 means the extension
+was denied by the allowlist (or the path was unreadable as uid 101), and 404
+means an allowlisted extension whose file doesn't exist — an existence
+oracle. This was reviewed and accepted as low value, since the allowlist is
+genomics file suffixes rather than anything secret, and it is not new to this
+change — `.hic` alone had the same property before this branch widened the
+allowlist.
+
 ### Deliberately unchanged
 
 - **`gzip` stays off.** Re-compressing bgzf, bigwig, or `.hic` costs CPU for no
