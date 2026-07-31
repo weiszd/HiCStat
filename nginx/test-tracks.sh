@@ -132,6 +132,36 @@ hdr() {  # hdr <url> <header-name-lowercase>
         'tolower($1)==h {print $2; exit}'
 }
 
+echo "== allowlist shape (extension set) =="
+# The checks below only enumerate specific denied extensions (canaries,
+# collisions, anchoring edge cases). None of them notice the allowlist
+# itself growing -- adding e.g. ~*\.(json|xml|csv|ini|crt|pub|bak|sql)$ to
+# the map would leave every existing check green and failed=0. On a
+# container that bind-mounts host / read-only, silently widening the
+# allowlist is a security change, not a refactor, so make it impossible to
+# do by accident: parse the actual extension tokens out of the map in
+# nginx.conf and diff them against this literal expected list. Any edit to
+# the map -- add, remove, rename -- now has to touch this list too, so the
+# person making the change has to look at what they're changing.
+EXPECTED_EXTS="bdg bed bedgraph bedpe bigbed bigwig broadpeak bw csi gappedpeak genepred gff gff3 gtf gvf gwas hic igv interact longrange maf mut narrowpeak refflat refgene seg tbi tdf vcf wig"
+
+actual_exts=$(sed -n '/map \$uri \$track_ok {/,/^    }/p' "$CONF" \
+    | grep -E '^\s*~\*' \
+    | sed -E 's/\(\\\.b\?gz\)\?//' \
+    | grep -oE '\\\.\(?[A-Za-z0-9|]+\)?\$' \
+    | sed -E 's/^\\\.\(?//; s/\)?\$$//' \
+    | tr '|' '\n' | tr 'A-Z' 'a-z' | sort -u | tr '\n' ' ')
+actual_exts="${actual_exts% }"
+
+if [ "$actual_exts" = "$EXPECTED_EXTS" ]; then
+    PASS=$((PASS+1)); printf '  ok    %-44s (%d extensions)\n' "map extension set matches expected" "$(echo "$actual_exts" | wc -w)"
+else
+    FAIL=$((FAIL+1))
+    printf '  FAIL  %-44s\n' "map extension set changed -- update EXPECTED_EXTS if intentional"
+    echo "    expected: $EXPECTED_EXTS"
+    echo "    actual:   $actual_exts"
+fi
+
 echo "== allowlisted formats serve =="
 for f in fix.hic fix.bigwig fix.bw fix.bigbed fix.tdf fix.bed fix.bedgraph \
          fix.bedpe fix.gff3 fix.wig fix.seg fix.narrowPeak fix.longrange \
