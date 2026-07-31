@@ -2,6 +2,16 @@
 
 Docker configuration for running the HiCStream server to serve local .hic files with Range request and CORS support.
 
+> **Note:** this document covers the `hicstream.py` server (this directory's
+> `docker-compose.yml`, port 8020, `.hic`-only by default). There is a
+> separate, newer nginx-based server in `nginx/` (`nginx/docker-compose.yml`,
+> port 8021, deployed live as `hicstream-nginx`) that serves a much wider set
+> of IGV/Juicebox track file extensions (bigWig, bigBed, BED, VCF, tabix
+> indexes, etc.) from the same host-`/` read-only mount. The allowlist for
+> that server is defined entirely by the `map $track_ok` block in
+> `nginx/nginx.conf` — treat that block as the source of truth for what it
+> serves, not this file.
+
 ## Quick Start
 
 ```bash
