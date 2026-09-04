@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HiCStat — .hic File Header Inspector</title>
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/juicebox.js@2.5.1/dist/css/juicebox.css">
-  <script src="https://cdn.jsdelivr.net/npm/juicebox.js@2.5.1/dist/juicebox.min.js"></script>
+  <link rel="stylesheet" href="vendor/juicebox/css/juicebox.css">
+  <script src="vendor/juicebox/juicebox.min.js"></script>
   <style>
     :root {
       --bg: #0f1117;
@@ -964,7 +964,7 @@ async function initJuicebox(fileUrl) {
 
   // Destroy previous instance if any
   if (juiceboxBrowser) {
-    try { juiceboxBrowser.dispose(); } catch {}
+    try { juiceboxBrowser.registry.dispose(); } catch {}
     juiceboxBrowser = null;
     container.innerHTML = '';
   }
@@ -1311,7 +1311,7 @@ function hideError() { document.getElementById('error').classList.remove('visibl
 function hideResults() {
   document.getElementById('results').classList.remove('visible');
   if (juiceboxBrowser) {
-    try { juiceboxBrowser.dispose(); } catch {}
+    try { juiceboxBrowser.registry.dispose(); } catch {}
     juiceboxBrowser = null;
   }
 }

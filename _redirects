@@ -1,3 +1,6 @@
 # Cloudflare Pages SPA routing
 # Redirects /ENCFF090JFB to /?q=ENCFF090JFB for deep linking
+# Cloudflare applies _redirects before static-asset lookup, so the vendored
+# juicebox.js build must be passed through ahead of the catch-all.
+/vendor/* /vendor/:splat 200
 /* /?q=:splat 200
