@@ -18,7 +18,7 @@ Push to `master` triggers GitHub Actions (`.github/workflows/pages.yml`) which d
 ### Cloudflare Pages
 Push to `master` also triggers `.github/workflows/cloudflare-pages.yml` which deploys to Cloudflare Pages. Requires `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets in GitHub. Project name: `hicstat`. See [CLOUDFLARE.md](CLOUDFLARE.md) for setup details.
 
-SPA routing uses `_redirects` file instead of `404.html` on Cloudflare.
+SPA routing uses `_redirects` file instead of `404.html` on Cloudflare. Cloudflare applies `_redirects` before static-asset lookup, so the catch-all `/* /?q=:splat 200` would swallow real files; `/vendor/*` has an explicit pass-through rule ahead of it.
 
 Git config for this repo: user `weiszd`, email `weiszd@users.noreply.github.com`.
 
@@ -34,7 +34,27 @@ Everything lives in `index.html` — CSS, HTML, and all JavaScript in a single f
 - **S3 Proxy routing** — `needsProxy()` checks if URL hostname is in `PROXIED_S3_HOSTS`; if so, routes through the Supabase Edge Function proxy instead of direct fetch
 - **fetchHeaderBytes()** — Fetches first 256 KB via Range request (direct or proxied), with sanity check for HTML-instead-of-binary responses
 - **renderResults()** — Builds card-based HTML for ENCODE metadata, header info, resolutions, chromosomes table, and expandable attributes (statistics auto-expands)
+- **initJuicebox()** — Mounts the vendored juicebox.js viewer (`juicebox.init(container, { url })`) under the Contact Map Viewer card; tears down a previous embed with `browser.registry.dispose()`
 - **autoLoad()** — On page load, checks URL path or `?q=` param for deep linking (e.g., `/HiCStat/ENCFF090JFB`)
+
+### Juicebox contact-map viewer (vendored juicebox.js)
+
+`index.html` embeds [juicebox.js](https://github.com/aidenlab/juicebox.js) from `vendor/juicebox/` (`juicebox.min.js` UMD build defining the `juicebox` global, `css/juicebox.css`, `css/img/`). It tracks the same source as https://aidenlab.org/juicebox/, whose juicebox-web depends on `github:aidenlab/juicebox.js#master`. The npm package `juicebox.js` stopped at 2.5.1 and is not used.
+
+Currently vendored: `aidenlab/juicebox.js` master `a71b820` (v4.2.0 + resolution-lock mirroring), built 2026-09-04 with Vite. Source maps are not vendored; the `sourceMappingURL` line is stripped from `juicebox.min.js`.
+
+To update:
+
+```bash
+git clone https://github.com/aidenlab/juicebox.js.git && cd juicebox.js   # git checkout <sha> to pin
+npm ci --ignore-scripts && npm run build
+cp dist/juicebox.min.js   ../HiCStat/vendor/juicebox/
+cp dist/css/juicebox.css  ../HiCStat/vendor/juicebox/css/
+cp dist/css/img/*         ../HiCStat/vendor/juicebox/css/img/
+sed -i '/^\/\/# sourceMappingURL=/d' ../HiCStat/vendor/juicebox/juicebox.min.js
+```
+
+Teardown uses the 4.x per-container registry API, `browser.registry.dispose()`, which disposes the browser, removes the registry's alert dialog, and lets a later `init()` on the same element start clean.
 
 ### S3 Proxy (Supabase Edge Function)
 
