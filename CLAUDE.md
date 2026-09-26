@@ -4,29 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-HiCStat is a zero-dependency, single-page web app that inspects `.hic` file headers (Hi-C genomic contact matrices) by reading only the first 256 KB via HTTP Range requests. It accepts ENCODE accessions (`ENCFF...`) or direct URLs, parses the binary header, and displays metadata (version, genome, chromosomes, resolutions, attributes/statistics).
+HiCStat is a single-page web app that inspects `.hic` file headers (Hi-C genomic contact matrices) by reading only the first 256 KB via HTTP Range requests. It accepts ENCODE accessions (`ENCFF...`) or direct URLs, parses the binary header, and displays metadata (version, genome, chromosomes, resolutions, attributes/statistics).
 
 **Live site:** https://weiszd.github.io/HiCStat/
 
 ## Deployment
 
 ### GitHub Pages
-Push to `master` triggers GitHub Actions (`.github/workflows/pages.yml`) which deploys the repo root to GitHub Pages. There is no build step — `index.html` is served directly.
+Push to `master` triggers GitHub Actions (`.github/workflows/pages.yml`) which runs `npm ci && npm run build` (Node from `.nvmrc`) and deploys `dist/` to GitHub Pages.
 
 **Live site:** https://weiszd.github.io/HiCStat/
 
 ### Cloudflare Pages
-Push to `master` also triggers `.github/workflows/cloudflare-pages.yml` which deploys to Cloudflare Pages. Requires `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets in GitHub. Project name: `hicstat`. See [CLOUDFLARE.md](CLOUDFLARE.md) for setup details.
+Push to `master` also triggers `.github/workflows/cloudflare-pages.yml` which builds the same way and deploys `dist/` to Cloudflare Pages. Requires `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets in GitHub. Project name: `hicstat`. See [CLOUDFLARE.md](CLOUDFLARE.md) for setup details.
 
-SPA routing uses `_redirects` file instead of `404.html` on Cloudflare. Cloudflare applies `_redirects` before static-asset lookup, so the catch-all `/* /?q=:splat 200` would swallow real files; `/vendor/*` has an explicit pass-through rule ahead of it.
+SPA routing uses `public/_redirects` instead of `404.html` on Cloudflare. Cloudflare applies `_redirects` before static-asset lookup, so the catch-all `/* /?q=:splat 200` would swallow real files; `/assets/*` (the Vite build output) has an explicit pass-through rule ahead of it.
 
 Git config for this repo: user `weiszd`, email `weiszd@users.noreply.github.com`.
 
 ## Architecture
 
-Everything lives in `index.html` — CSS, HTML, and all JavaScript in a single file. No frameworks, no bundler, no npm.
+The app's own code lives in `index.html` — CSS, HTML, and all JavaScript in one inline `<script type="module">`. No frameworks. Vite bundles that module together with its two npm dependencies, juicebox.js and hic-straw (`npm run dev` / `npm run build` / `npm run preview`; Node 24, see `.nvmrc`). `public/` holds files copied verbatim into `dist/` (`404.html`, `_redirects`).
 
-### Key code sections (all in `index.html <script>`):
+Because the script is a module, its functions are not global. The ones inline `onclick` handlers call — `run`, `setExample`, `copyUrlToClipboard`, `toggleSection` — are assigned to `window` explicitly; a new handler needs adding there too.
+
+### Key code sections (all in `index.html <script type="module">`):
 
 - **BinaryParser** — DataView wrapper for reading little-endian binary types (int, long as BigInt, null-terminated strings) from an ArrayBuffer
 - **parseHicHeader()** — Parses the .hic binary format: magic "HIC", version (v5–v9+), footer position, genome ID, normalization vector index (v9+), key-value attributes, chromosome list, BP resolutions, fragment resolutions
@@ -34,25 +36,24 @@ Everything lives in `index.html` — CSS, HTML, and all JavaScript in a single f
 - **S3 Proxy routing** — `needsProxy()` checks if URL hostname is in `PROXIED_S3_HOSTS`; if so, routes through the Supabase Edge Function proxy instead of direct fetch
 - **fetchHeaderBytes()** — Fetches first 256 KB via Range request (direct or proxied), with sanity check for HTML-instead-of-binary responses
 - **renderResults()** — Builds card-based HTML for ENCODE metadata, header info, resolutions, chromosomes table, and expandable attributes (statistics auto-expands)
-- **initJuicebox()** — Mounts the vendored juicebox.js viewer (`juicebox.init(container, { url })`) under the Contact Map Viewer card; tears down a previous embed with `browser.registry.dispose()`
+- **fetchNormalizationData()** — Lists normalization vectors per resolution with hic-straw (`import('hic-straw')`, split into its own chunk)
+- **initJuicebox()** — Mounts the juicebox.js viewer (`juicebox.init(container, { url })`) under the Contact Map Viewer card; tears down a previous embed with `browser.registry.dispose()`
 - **autoLoad()** — On page load, checks URL path or `?q=` param for deep linking (e.g., `/HiCStat/ENCFF090JFB`)
 
-### Juicebox contact-map viewer (vendored juicebox.js)
+### Juicebox contact-map viewer (juicebox.js)
 
-`index.html` embeds [juicebox.js](https://github.com/aidenlab/juicebox.js) from `vendor/juicebox/` (`juicebox.min.js` UMD build defining the `juicebox` global, `css/juicebox.css`, `css/img/`). It tracks the same source as https://aidenlab.org/juicebox/, whose juicebox-web depends on `github:aidenlab/juicebox.js#master`. The npm package `juicebox.js` stopped at 2.5.1 and is not used.
+`index.html` imports [juicebox.js](https://github.com/aidenlab/juicebox.js) and its stylesheet (`import juicebox from 'juicebox.js'`, `import 'juicebox.js/dist/css/juicebox.css'`), the same way juicebox-web — the app at https://aidenlab.org/juicebox/ — consumes it. Both it and hic-straw are `devDependencies` pinned to GitHub tags, because the npm registry packages are stale (`juicebox.js` stopped at 2.5.1, `hic-straw` at igvteam's 2.1.4):
 
-Currently vendored: `aidenlab/juicebox.js` master `a71b820` (v4.2.0 + resolution-lock mirroring), built 2026-09-04 with Vite. Source maps are not vendored; the `sourceMappingURL` line is stripped from `juicebox.min.js`.
-
-To update:
-
-```bash
-git clone https://github.com/aidenlab/juicebox.js.git && cd juicebox.js   # git checkout <sha> to pin
-npm ci --ignore-scripts && npm run build
-cp dist/juicebox.min.js   ../HiCStat/vendor/juicebox/
-cp dist/css/juicebox.css  ../HiCStat/vendor/juicebox/css/
-cp dist/css/img/*         ../HiCStat/vendor/juicebox/css/img/
-sed -i '/^\/\/# sourceMappingURL=/d' ../HiCStat/vendor/juicebox/juicebox.min.js
+```json
+"hic-straw": "github:aidenlab/hic-straw#v4.0.1",
+"juicebox.js": "github:aidenlab/juicebox.js#v4.5.1"
 ```
+
+juicebox.js has no committed `dist/`; its `prepare` script builds it during `npm install`.
+
+Keep hic-straw at v4.0.1 or later. Earlier versions set `User-Agent: IGV` on every read, which Chrome drops but Firefox and Safari send. That forces a CORS preflight, and ENCODE (both encodeproject.org and its S3 bucket) refuses it, so ENCODE maps did not load in those browsers (aidenlab/hic-straw#56).
+
+To update, bump the tags in `package.json`, run `npm install`, and check that a map loads with `npm run build && npm run preview`.
 
 Teardown uses the 4.x per-container registry API, `browser.registry.dispose()`, which disposes the browser, removes the registry's alert dialog, and lets a later `init()` on the same element start clean.
 

@@ -17,3 +17,6 @@ Desktop.ini
 #Cloudflare Pages
 .cloudflare/
 .wrangler/
+# Build
+node_modules/
+dist/
