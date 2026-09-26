@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HiCStat — .hic File Header Inspector</title>
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css">
-  <link rel="stylesheet" href="vendor/juicebox/css/juicebox.css">
-  <script src="vendor/juicebox/juicebox.min.js"></script>
   <style>
     :root {
       --bg: #0f1117;
@@ -354,7 +352,12 @@
     </div>
   </div>
 
-<script>
+<script type="module">
+// juicebox.js and hic-straw are npm dependencies pinned to GitHub tags in package.json, bundled
+// by Vite -- the same way juicebox-web consumes juicebox.js.
+import juicebox from 'juicebox.js'
+import 'juicebox.js/dist/css/juicebox.css'
+
 // ─── Binary Parser ───────────────────────────────────────────────
 class BinaryParser {
   constructor(dataView, littleEndian = true) {
@@ -867,7 +870,8 @@ let juiceboxBrowser = null;
 
 // ─── Normalization Vector Types (via hic-straw) ─────────────────
 async function fetchNormalizationData(url) {
-  const { default: Straw } = await import('https://cdn.jsdelivr.net/npm/hic-straw@2.1.4/dist/hic-straw.esm.js');
+  // Loaded on demand, so it is split into its own chunk
+  const { default: Straw } = await import('hic-straw');
   const straw = new Straw({ url });
   const norms = await straw.getNormalizationOptions();
 
@@ -969,17 +973,10 @@ async function initJuicebox(fileUrl) {
     container.innerHTML = '';
   }
 
-  // Check if juicebox library loaded
-  if (typeof juicebox === 'undefined' && typeof hic === 'undefined') {
-    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:0.9rem">Juicebox library failed to load</div>';
-    return;
-  }
-
-  const jb = (typeof juicebox !== 'undefined') ? juicebox : hic;
   const url = getJuiceboxUrl(fileUrl);
 
   try {
-    juiceboxBrowser = await jb.init(container, { url });
+    juiceboxBrowser = await juicebox.init(container, { url });
   } catch (err) {
     console.warn('Juicebox init failed:', err);
     container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:0.9rem;padding:1rem;text-align:center">
@@ -1406,6 +1403,9 @@ async function run() {
     btn.disabled = false;
   }
 }
+
+// Module functions are not global; these are the ones inline onclick handlers call
+Object.assign(window, { run, setExample, copyUrlToClipboard, toggleSection });
 
 // Enter key
 document.getElementById('input').addEventListener('keydown', e => {
